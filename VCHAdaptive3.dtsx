@@ -12,8 +12,8 @@
   DTS:LocaleID="4105"
   DTS:ObjectName="VCHAdaptive2"
   DTS:PackageType="5"
-  DTS:VersionBuild="170"
-  DTS:VersionGUID="{425CBC76-2D8F-4D43-A1F4-ECC3C6D81F64}">
+  DTS:VersionBuild="175"
+  DTS:VersionGUID="{722A88D4-C772-48B8-9556-C2C44B54CDE1}">
   <DTS:Property
     DTS:Name="PackageFormatVersion">8</DTS:Property>
   <DTS:ConnectionManagers>
@@ -995,7 +995,7 @@
         <DTS:Property
           DTS:DataType="8"
           DTS:Name="ParameterValue"
-          Encrypted="1">AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAANgy80FQZaEefBkK9qbGtxwAAAAAIAAAARABUAFMAAAADZgAAwAAAABAAAABHLiWMR32xJfsK01pdwGAaAAAAAASAAACgAAAAEAAAACqL5ewQqWMDPYs8DFsI+8ggAAAATHiZWLIAOCQNRdyD7PDCMHUIUQbWjY3J3uvZuRDUfTgUAAAAPAJH4ry37wgBklfn0kTnQcw6Cts</DTS:Property>
+          Encrypted="1">AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAANgy80FQZaEefBkK9qbGtxwAAAAAIAAAARABUAFMAAAADZgAAwAAAABAAAAAe0zsgqaO9AmIyJwvuinO2AAAAAASAAACgAAAAEAAAAEhY85il0Ofddv9GVak5Ad8gAAAApXTpdfTQOYGdP1TH8oNIPhsu7fO7wkpzqO/DSXDt3DMUAAAA07JaQRrt687mAYcE7WA3M54GJKg</DTS:Property>
       </DTS:Property>
     </DTS:PackageParameter>
     <DTS:PackageParameter
@@ -2718,7 +2718,7 @@ order by 3</property>
       DTS:ExecutableType="Microsoft.ExpressionTask"
       DTS:LocaleID="-1"
       DTS:ObjectName="any FSCM failed"
-      DTS:ThreadHint="2">
+      DTS:ThreadHint="1">
       <DTS:Variables />
       <DTS:ObjectData>
         <ExpressionTask
@@ -3681,7 +3681,7 @@ order by 2,3,4, 5</property>
       DTS:ExecutableType="Microsoft.ExpressionTask"
       DTS:LocaleID="-1"
       DTS:ObjectName="FSCM capital failed"
-      DTS:ThreadHint="1">
+      DTS:ThreadHint="3">
       <DTS:Variables />
       <DTS:ObjectData>
         <ExpressionTask
@@ -3696,7 +3696,7 @@ order by 2,3,4, 5</property>
       DTS:ExecutableType="Microsoft.ExpressionTask"
       DTS:LocaleID="-1"
       DTS:ObjectName="jobcode failed"
-      DTS:ThreadHint="3">
+      DTS:ThreadHint="2">
       <DTS:Variables />
       <DTS:ObjectData>
         <ExpressionTask
@@ -5358,92 +5358,119 @@ ADAPTIVE RELEASE 3 - PEOPLESOFT INTEGRATION REQUIREMENTS
 Jira: FAA-16708 / PSOFT-4404
 ********************************************/
 
-
 /***********************
 4.3.2.10.	FILE REF NO. 27 – Non-WF/LDR hours integration  -- Made by CL
 Filename: 27_non_workforce_hours.csv
 Data source: FSCM
 Original story: FAA-15943, FAA_16098
 Modified: 2023/08/29 - use 4.3.2.9 as a base
+2024-10-24  -Changed as per PSOFT-5114
 ***********************/
 
-declare @bu as varchar(5)
-declare @fiscal as VARCHAR(4)
-declare @completed_period as VARCHAR(2)
-SET @bu = '10010'
-SET @fiscal = 
-	(select FISCAL_YEAR from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and PERIOD_CTR in
-	(select max(PERIOD_CTR) from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and END_DT &lt;'2023-08-17'  and BEGIN_DT &lt; '2023-08-17'));
-SET @completed_period = 
-	(select ACCOUNTING_PERIOD from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and PERIOD_CTR in
-	(select max(PERIOD_CTR) from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and END_DT &lt;'2023-08-17' and BEGIN_DT &lt;'2023-08-17'));
+DECLARE @bu AS VARCHAR(5)
+DECLARE @fiscal AS VARCHAR(4)
+DECLARE @completed_period AS VARCHAR(2)
+DECLARE @prev_fiscal AS VARCHAR(4)
+DECLARE @start_period_prev_year AS INT
+DECLARE @end_period_prev_year AS INT
 
---Actuals Stats 
+SET @bu = '10010'
+
+-- Get the current fiscal year and the completed period
+SET @fiscal = 
+	(SELECT FISCAL_YEAR 
+     FROM PS_CAL_DETP_VW 
+     WHERE SETID = 'SET00' 
+       AND CALENDAR_ID = '02' 
+       AND PERIOD_CTR IN
+           (SELECT MAX(PERIOD_CTR) 
+            FROM PS_CAL_DETP_VW 
+            WHERE SETID = 'SET00' 
+              AND CALENDAR_ID = '02' 
+              AND END_DT &lt; GETDATE()  
+              AND BEGIN_DT &lt; GETDATE()))
+
+SET @completed_period = 
+	(SELECT ACCOUNTING_PERIOD 
+     FROM PS_CAL_DETP_VW 
+     WHERE SETID = 'SET00' 
+       AND CALENDAR_ID = '02' 
+       AND PERIOD_CTR IN
+           (SELECT MAX(PERIOD_CTR) 
+            FROM PS_CAL_DETP_VW 
+            WHERE SETID = 'SET00' 
+              AND CALENDAR_ID = '02' 
+              AND END_DT &lt; GETDATE() 
+              AND BEGIN_DT &lt; GETDATE()))
+
+-- Calculate the previous fiscal year
+SET @prev_fiscal = @fiscal - 1
+
+-- Determine the start and end periods for the last seven periods of the previous fiscal year
+SET @end_period_prev_year = 13
+SET @start_period_prev_year = CASE 
+    WHEN @completed_period = 1 THEN 1
+    ELSE @end_period_prev_year - 13
+END;
+
+-- Actuals Stats 
 WITH stats_ledger AS
-	(SELECT
-		rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT) as [Level Code]
-		,rtrim(A.ACCOUNT) as [Account]
-		,case when A.[PROGRAM_CODE] ='' then 'Subaccount' else A.[PROGRAM_CODE] end [Subaccount]
-		,convert(varchar,A3.END_DT,101) [Date]
-		,BUSINESS_UNIT
-		,A.FISCAL_YEAR
-		,A.ACCOUNTING_PERIOD
-		--,'STAT' [REV/EXP] --for testing
-		,round(SUM( A.POSTED_TOTAL_AMT),2) as [Value]
-		--,round(SUM( A.POSTED_TOTAL_AMT),2) as [DR/CR] --for testing
+(
+	SELECT
+		RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT) AS [Level Code]
+		, RTRIM(A.ACCOUNT) AS [Account]
+		, CASE WHEN A.[PROGRAM_CODE] = '' THEN 'Subaccount' ELSE A.[PROGRAM_CODE] END AS [Subaccount]
+		, CONVERT(VARCHAR, A3.END_DT, 101) AS [Date]
+		, BUSINESS_UNIT
+		, A.FISCAL_YEAR
+		, A.ACCOUNTING_PERIOD
+		, ROUND(SUM(A.POSTED_TOTAL_AMT), 2) AS [Value]
 	FROM PS_LEDGER A
-	left join PS_PROGRAM_ALL_VW A2
+	LEFT JOIN PS_PROGRAM_ALL_VW A2
 		ON A.BUSINESS_UNIT = A2.SETID
-		and A.PROGRAM_CODE = A2.PROGRAM_CODE
-	left join PS_CAL_DETP_VW A3
-		on A3.SETID = 'SET00'
-		and A3.CALENDAR_ID = '02'
-		and A.FISCAL_YEAR = A3.FISCAL_YEAR
-		and A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
+		AND A.PROGRAM_CODE = A2.PROGRAM_CODE
+	LEFT JOIN PS_CAL_DETP_VW A3
+		ON A3.SETID = 'SET00'
+		AND A3.CALENDAR_ID = '02'
+		AND A.FISCAL_YEAR = A3.FISCAL_YEAR
+		AND A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
 	WHERE
 		A.BUSINESS_UNIT = @bu
-		and (A.FISCAL_YEAR &gt;= @fiscal -1) --include entire year to ensure retroactive adjustments is captured
-		and A.ACCOUNTING_PERIOD between 1 and 13
+		AND ( (A.FISCAL_YEAR = @fiscal AND A.ACCOUNTING_PERIOD &lt;= @completed_period) -- Current fiscal year up to current period
+			OR (A.FISCAL_YEAR = @prev_fiscal AND A.ACCOUNTING_PERIOD BETWEEN @start_period_prev_year AND @end_period_prev_year) -- Last seven periods of previous fiscal year
+		)
 		AND A.CURRENCY_CD = ''
-		AND (A.STATISTICS_CODE = 'HRS') --FAA-16098 CL Modified
-		--and A.ACCOUNT like 'S%'--FAA-16098 CL Modified
-		AND A.ACCOUNT not like '0%' --FAA-16098 EA
-		AND A.ACCOUNT not in
-			(select ACCOUNT from PS_PH_ACCT_VCH_FH where PH_NODE_LVL4 in ( 'SALRY_INTERFACE') or PH_NODE_LVL5 in ('MEDCOMP_INTERFACE'))
+		AND (A.STATISTICS_CODE = 'HRS') 
+		AND A.ACCOUNT NOT LIKE '0%' 
+		AND A.ACCOUNT NOT IN
+			(SELECT ACCOUNT 
+			 FROM PS_PH_ACCT_VCH_FH 
+			 WHERE PH_NODE_LVL4 IN ('SALRY_INTERFACE') 
+			 OR PH_NODE_LVL5 IN ('MEDCOMP_INTERFACE'))
 	GROUP BY
-		rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT)
-		,rtrim(A.ACCOUNT)
-		,A.PROGRAM_CODE
-		,convert(varchar,A3.END_DT,101)
-		,BUSINESS_UNIT
-		,A.FISCAL_YEAR
-		,A.ACCOUNTING_PERIOD
-	--HAVING --2023/03/15 removed to include net zero entries
-		--SUM( A.POSTED_TOTAL_AMT) &lt;&gt; 0 --2023/03/15 removed to include net zero entries
-	)
-select
-	[Level Code] --Field 1 in Adaptive template
-	,[Account] --Field 2 in Adaptive template
-	,[Subaccount] [Subaccount Code] --Field 3 in Adaptive template
-	,[Date] --Field 4 in Adaptive template
-	,Sum([Value]) [Value] --Field 5 in Adaptive template
-from stats_ledger
-WHERE
-	--ABS([Value]) &lt;&gt; 0 --2023/03/15 removed to include net zero entries
-	--and --2023/03/15 removed to include net zero entries
-	(
-	([FISCAL_YEAR] = @fiscal and [ACCOUNTING_PERIOD] &lt;= @completed_period) --select all completed periods in current Fiscal
-	or ([FISCAL_YEAR] = (case when @completed_period &lt;=3 then @fiscal -1 else @fiscal end)) --select entire prior Fiscal when currently completed up to P3 or earlier
-	)
-Group by 
+		RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT)
+		, RTRIM(A.ACCOUNT)
+		, A.PROGRAM_CODE
+		, CONVERT(VARCHAR, A3.END_DT, 101)
+		, BUSINESS_UNIT
+		, A.FISCAL_YEAR
+		, A.ACCOUNTING_PERIOD
+)
+SELECT
 	[Level Code]
-	,[Account]
-	,[Subaccount]
-	,[Date]
-	,FISCAL_YEAR
-	,ACCOUNTING_PERIOD
-	--,[REV/EXP]
-order by FISCAL_YEAR,ACCOUNTING_PERIOD,4,1,2,3</property>
+	, [Account]
+	, [Subaccount] AS [Subaccount Code]
+	, [Date]
+	, SUM([Value]) AS [Value]
+FROM stats_ledger
+GROUP BY 
+	[Level Code]
+	, [Account]
+	, [Subaccount]
+	, [Date]
+	, FISCAL_YEAR
+	, ACCOUNTING_PERIOD
+ORDER BY FISCAL_YEAR, ACCOUNTING_PERIOD, [Date], [Level Code], [Account], [Subaccount]</property>
                     <property
                       dataType="System.String"
                       description="The variable that contains the SQL command to be executed."
@@ -6279,131 +6306,190 @@ ADAPTIVE RELEASE 3 - PEOPLESOFT INTEGRATION REQUIREMENTS
 Jira: FAA-16708 / PSOFT-4404
 ********************************************/
 
-
 /***********************
 4.3.2.4.	FILE REF NO. 7 – WORKFORCE ACTUALS LOAD (LDR)
 Filename: 7_actuals_workforce.csv
 Data Source: FSCM
 Original Story: FAA-8975
-Updated 2023/08/23
+Updated 2023/09/26 NOT USED BUT CONTAINS THE SQL CORRECTION
+2024-10-24 Zknezic - Changed as per PSOFT-5114
 ***********************/
 
-declare @bu as varchar(5)
-declare @fiscal as VARCHAR(4)
-declare @completed_period as VARCHAR(2)
-SET @bu = '10010'
-SET @fiscal = 
-	(select FISCAL_YEAR from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and PERIOD_CTR in
-	(select max(PERIOD_CTR) from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and END_DT &lt; getdate() and BEGIN_DT &lt; getdate()))
-SET @completed_period = 
-	(select ACCOUNTING_PERIOD from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and PERIOD_CTR in
-	(select max(PERIOD_CTR) from PS_CAL_DETP_VW where SETID = 'SET00' and CALENDAR_ID = '02' and END_DT &lt; getdate() and BEGIN_DT &lt; getdate()))
+DECLARE @bu AS VARCHAR(5)
+DECLARE @fiscal AS VARCHAR(4)
+DECLARE @completed_period AS VARCHAR(2)
+DECLARE @last_fiscal_year AS VARCHAR(4)
+DECLARE @current_fiscal_year AS VARCHAR(4)
+DECLARE @current_period AS VARCHAR(2)
 
-select
-	B.[Level Code] --Field 1 in Adaptive template
-	,B.[Sum_Code] [WFSummary Account] --Field 2 in Adaptive template
-	,B.[Job_Code Code] [Workforce_Job_Code Code] --Field 3 in Adaptive template
-	,B.[Date] --Field 4 in Adaptive template
-	,Sum(B.[Value]) [Value] --Field 5 in Adaptive template
-	
-from
-	(--the following subqueries faciliate combining results from the monetary and hours columns into the same Value column.
-		(--LDR Actuals Dollars
-			SELECT
-			rtrim(A.PH_LD_SUM_CODE)+'_'+replace(replace(rtrim(A1.DESCR),' ','_'),'&amp;','and')+'_'+'Dollars' as [Sum_Code]
-			,rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT) as [Level Code]
-			,right('000000'+cast(rtrim(A.JOBCODE)as varchar(6)),6) as [Job_Code Code] --need to zero-pad to compensate for manual adjustment inconsistencies
-			,replace(rtrim(A2.DESCR),',',' ') as [Job_Code Name] --need to strip out commas for csv conversion to Excel
-			,rtrim(A.ACCOUNT) as [GL Account] --for testing
-			,convert(varchar,A3.END_DT,101) [Date]
-			,BUSINESS_UNIT --for testing
-			,A.FISCAL_YEAR --for testing
-			,A.ACCOUNTING_PERIOD --for testing
-			,sum(A.PH_LD_ACT_AMT) as [Value]
-			FROM
-			PS_PH_LD_REPORT A
-			LEFT JOIN PS_PH_LD_SUM_CODE A1
-				ON A.BUSINESS_UNIT = A1.SETID AND A.PH_LD_SUM_CODE = A1.PH_LD_SUM_CODE
-			LEFT JOIN PS_PH_LD_JOB_CLASS A2
-				ON A.BUSINESS_UNIT = A2.SETID AND A.JOBCODE = A2.PH_LD_JOB_CODE
-				--select count(distinct PH_LD_JOB_CODE) from PS_PH_LD_JOB_CLASS WHERE SETID = '10010'
-			left join PS_CAL_DETP_VW A3
-				on A3.SETID = 'SET00'
-				and A3.CALENDAR_ID = '02'
-				and A.FISCAL_YEAR = A3.FISCAL_YEAR
-				and A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
-			WHERE
-				A.BUSINESS_UNIT = @bu
-				and
-					(A.FISCAL_YEAR = (case when @completed_period &lt;= '2' then @fiscal -1 else @fiscal end)
-						and A.ACCOUNTING_PERIOD = (case when @completed_period &lt;= '2' then 13 else @completed_period - 1 end)) or
-					(A.FISCAL_YEAR = @fiscal and A.ACCOUNTING_PERIOD = @completed_period) or
-					(A.FISCAL_YEAR = @fiscal and A.ACCOUNTING_PERIOD = @completed_period -1)
-					--FAA-16138 2023/08/23 include prior period plus prior year P13 if current period is P1 or P2
-			GROUP BY
-				rtrim(A.PH_LD_SUM_CODE)+'_'+replace(replace(rtrim(A1.DESCR),' ','_'),'&amp;','and')+'_'+'Dollars'
-				,rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT)
-				,rtrim(A.JOBCODE)
-				,rtrim(A2.DESCR)
-				,rtrim(A.ACCOUNT)
-				,convert(varchar,A3.END_DT,101)
-				,BUSINESS_UNIT
-				,A.FISCAL_YEAR
-				,A.ACCOUNTING_PERIOD)
-		UNION ALL
-		(--LDR Actuals Hours
-			SELECT
-			rtrim(A.PH_LD_SUM_CODE)+'_'+replace(replace(rtrim(A1.DESCR),' ','_'),'&amp;','and')+'_'+'Hours' as [Sum_Code]
-			,rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT) as [Level Code]
-			,right('000000'+cast(rtrim(A.JOBCODE)as varchar(6)),6) as [Job_Code Code] --need to zero-pad to compensate for manual adjustment inconsistencies
-			,replace(rtrim(A2.DESCR),',',' ') as [Job_Code Name] --need to strip out commas for csv conversion to Excel
-			,rtrim(A.ACCOUNT) as [GL Account] --for testing
-			,convert(varchar,A3.END_DT,101) [Date]
-			,BUSINESS_UNIT --for testing
-			,A.FISCAL_YEAR --for testing
-			,A.ACCOUNTING_PERIOD --for testing
-			,sum(A.PH_LD_ACT_HRS) as [Value]
-			FROM
-			PS_PH_LD_REPORT A
-			LEFT JOIN PS_PH_LD_SUM_CODE A1
-				ON A.BUSINESS_UNIT = A1.SETID AND A.PH_LD_SUM_CODE = A1.PH_LD_SUM_CODE
-			LEFT JOIN PS_PH_LD_JOB_CLASS A2
-				ON A.BUSINESS_UNIT = A2.SETID AND A.JOBCODE = A2.PH_LD_JOB_CODE
-				--select count(distinct PH_LD_JOB_CODE) from PS_PH_LD_JOB_CLASS WHERE SETID = '10010'
-			left join PS_CAL_DETP_VW A3
-				on A3.SETID = 'SET00'
-				and A3.CALENDAR_ID = '02'
-				and A.FISCAL_YEAR = A3.FISCAL_YEAR
-				and A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
-			WHERE
-				A.BUSINESS_UNIT = @bu
-				and (
-					(A.FISCAL_YEAR = (case when @completed_period &lt;= '2' then @fiscal -1 else @fiscal end)
-						and A.ACCOUNTING_PERIOD = (case when @completed_period &lt;= '2' then 13 else @completed_period - 1 end)) or
-					(A.FISCAL_YEAR = @fiscal and A.ACCOUNTING_PERIOD = @completed_period) or
-					(A.FISCAL_YEAR = @fiscal and A.ACCOUNTING_PERIOD = @completed_period -1))
-					--FAA-16138 2023/08/23 include prior period plus prior year P13 if current period is P1 or P2
-			GROUP BY
-				rtrim(A.PH_LD_SUM_CODE)+'_'+replace(replace(rtrim(A1.DESCR),' ','_'),'&amp;','and')+'_'+'Hours'
-				,rtrim(A.DEPTID) + rtrim(A.OPERATING_UNIT)
-				,rtrim(A.JOBCODE)
-				,rtrim(A2.DESCR)
-				,rtrim(A.ACCOUNT)
-				,convert(varchar,A3.END_DT,101)
-				,BUSINESS_UNIT
-				,A.FISCAL_YEAR
-				,A.ACCOUNTING_PERIOD)
-	) B
-	WHERE
-	ABS([Value]) &lt;&gt; 0
-	Group by
-		B.[Level Code]
-		,B.[Sum_Code]
-		,B.[Job_Code Code]
-		,FISCAL_YEAR
-		,ACCOUNTING_PERIOD
-		,B.[Date]
-	order by FISCAL_YEAR,ACCOUNTING_PERIOD, 4,1,2,3</property>
+SET @bu = '10010'
+
+-- Determine the current fiscal year and period
+SET @fiscal = (
+    SELECT FISCAL_YEAR
+    FROM PS_CAL_DETP_VW
+    WHERE SETID = 'SET00'
+    AND CALENDAR_ID = '02'
+    AND PERIOD_CTR = (
+        SELECT MAX(PERIOD_CTR)
+        FROM PS_CAL_DETP_VW
+        WHERE SETID = 'SET00'
+        AND CALENDAR_ID = '02'
+        AND END_DT &lt; GETDATE()
+        AND BEGIN_DT &lt; GETDATE()
+    )
+)
+
+SET @completed_period = (
+    SELECT ACCOUNTING_PERIOD
+    FROM PS_CAL_DETP_VW
+    WHERE SETID = 'SET00'
+    AND CALENDAR_ID = '02'
+    AND PERIOD_CTR = (
+        SELECT MAX(PERIOD_CTR)
+        FROM PS_CAL_DETP_VW
+        WHERE SETID = 'SET00'
+        AND CALENDAR_ID = '02'
+        AND END_DT &lt; GETDATE()
+        AND BEGIN_DT &lt; GETDATE()
+    )
+)
+
+-- Calculate last fiscal year and current fiscal year
+SET @last_fiscal_year = (
+    SELECT MAX(FISCAL_YEAR)
+    FROM PS_CAL_DETP_VW
+    WHERE SETID = 'SET00'
+    AND CALENDAR_ID = '02'
+    AND FISCAL_YEAR &lt; @fiscal
+)
+
+SET @current_fiscal_year = @fiscal
+
+-- Determine the current period for the current fiscal year
+SET @current_period = (
+    SELECT ACCOUNTING_PERIOD
+    FROM PS_CAL_DETP_VW
+    WHERE SETID = 'SET00'
+    AND CALENDAR_ID = '02'
+    AND FISCAL_YEAR = @current_fiscal_year
+    AND PERIOD_CTR = (
+        SELECT MAX(PERIOD_CTR)
+        FROM PS_CAL_DETP_VW
+        WHERE SETID = 'SET00'
+        AND CALENDAR_ID = '02'
+        AND FISCAL_YEAR = @current_fiscal_year
+        AND END_DT &lt; GETDATE()
+        AND BEGIN_DT &lt; GETDATE()
+    )
+)
+
+SELECT
+    B.[Level Code], -- Field 1 in Adaptive template
+    B.[Sum_Code] AS [WFSummary Account], -- Field 2 in Adaptive template
+    B.[Job_Code Code] AS [Workforce_Job_Code Code], -- Field 3 in Adaptive template
+    B.[Date], -- Field 4 in Adaptive template
+    SUM(B.[Value]) AS [Value] -- Field 5 in Adaptive template
+FROM
+    (
+        -- LDR Actuals Dollars
+        SELECT
+            RTRIM(A.PH_LD_SUM_CODE) + '_' + REPLACE(REPLACE(RTRIM(A1.DESCR), ' ', '_'), '&amp;', 'and') + '_' + 'Dollars' AS [Sum_Code],
+            RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT) AS [Level Code],
+            RIGHT('000000' + CAST(RTRIM(A.JOBCODE) AS VARCHAR(6)), 6) AS [Job_Code Code], -- need to zero-pad to compensate for manual adjustment inconsistencies
+            REPLACE(RTRIM(A2.DESCR), ',', ' ') AS [Job_Code Name], -- need to strip out commas for CSV conversion to Excel
+            RTRIM(A.ACCOUNT) AS [GL Account], -- for testing
+            CONVERT(VARCHAR, A3.END_DT, 101) AS [Date],
+            BUSINESS_UNIT, -- for testing
+            A.FISCAL_YEAR, -- for testing
+            A.ACCOUNTING_PERIOD, -- for testing
+            SUM(A.PH_LD_ACT_AMT) AS [Value]
+        FROM
+            PS_PH_LD_REPORT A
+            LEFT JOIN PS_PH_LD_SUM_CODE A1
+                ON A.BUSINESS_UNIT = A1.SETID AND A.PH_LD_SUM_CODE = A1.PH_LD_SUM_CODE
+            LEFT JOIN PS_PH_LD_JOB_CLASS A2
+                ON A.BUSINESS_UNIT = A2.SETID AND A.JOBCODE = A2.PH_LD_JOB_CODE
+            LEFT JOIN PS_CAL_DETP_VW A3
+                ON A3.SETID = 'SET00'
+                AND A3.CALENDAR_ID = '02'
+                AND A.FISCAL_YEAR = A3.FISCAL_YEAR
+                AND A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
+        WHERE
+            A.BUSINESS_UNIT = @bu
+            AND (
+                (A.FISCAL_YEAR = @last_fiscal_year AND A.ACCOUNTING_PERIOD = 13)
+                OR (A.FISCAL_YEAR = @current_fiscal_year AND A.ACCOUNTING_PERIOD BETWEEN @completed_period - 2 AND @completed_period)
+            )
+        GROUP BY
+            RTRIM(A.PH_LD_SUM_CODE) + '_' + REPLACE(REPLACE(RTRIM(A1.DESCR), ' ', '_'), '&amp;', 'and') + '_' + 'Dollars',
+            RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT),
+            RTRIM(A.JOBCODE),
+            RTRIM(A2.DESCR),
+            RTRIM(A.ACCOUNT),
+            CONVERT(VARCHAR, A3.END_DT, 101),
+            BUSINESS_UNIT,
+            A.FISCAL_YEAR,
+            A.ACCOUNTING_PERIOD
+        
+        UNION ALL
+        
+        -- LDR Actuals Hours
+        SELECT
+            RTRIM(A.PH_LD_SUM_CODE) + '_' + REPLACE(REPLACE(RTRIM(A1.DESCR), ' ', '_'), '&amp;', 'and') + '_' + 'Hours' AS [Sum_Code],
+            RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT) AS [Level Code],
+            RIGHT('000000' + CAST(RTRIM(A.JOBCODE) AS VARCHAR(6)), 6) AS [Job_Code Code], -- need to zero-pad to compensate for manual adjustment inconsistencies
+            REPLACE(RTRIM(A2.DESCR), ',', ' ') AS [Job_Code Name], -- need to strip out commas for CSV conversion to Excel
+            RTRIM(A.ACCOUNT) AS [GL Account], -- for testing
+            CONVERT(VARCHAR, A3.END_DT, 101) AS [Date],
+            BUSINESS_UNIT, -- for testing
+            A.FISCAL_YEAR, -- for testing
+            A.ACCOUNTING_PERIOD, -- for testing
+            SUM(A.PH_LD_ACT_HRS) AS [Value]
+        FROM
+            PS_PH_LD_REPORT A
+            LEFT JOIN PS_PH_LD_SUM_CODE A1
+                ON A.BUSINESS_UNIT = A1.SETID AND A.PH_LD_SUM_CODE = A1.PH_LD_SUM_CODE
+            LEFT JOIN PS_PH_LD_JOB_CLASS A2
+                ON A.BUSINESS_UNIT = A2.SETID AND A.JOBCODE = A2.PH_LD_JOB_CODE
+            LEFT JOIN PS_CAL_DETP_VW A3
+                ON A3.SETID = 'SET00'
+                AND A3.CALENDAR_ID = '02'
+                AND A.FISCAL_YEAR = A3.FISCAL_YEAR
+                AND A.ACCOUNTING_PERIOD = A3.ACCOUNTING_PERIOD
+        WHERE
+            A.BUSINESS_UNIT = @bu
+            AND (
+                (A.FISCAL_YEAR = @last_fiscal_year AND A.ACCOUNTING_PERIOD = 13)
+                OR (A.FISCAL_YEAR = @current_fiscal_year AND A.ACCOUNTING_PERIOD BETWEEN @completed_period - 2 AND @completed_period)
+            )
+        GROUP BY
+            RTRIM(A.PH_LD_SUM_CODE) + '_' + REPLACE(REPLACE(RTRIM(A1.DESCR), ' ', '_'), '&amp;', 'and') + '_' + 'Hours',
+            RTRIM(A.DEPTID) + RTRIM(A.OPERATING_UNIT),
+            RTRIM(A.JOBCODE),
+            RTRIM(A2.DESCR),
+            RTRIM(A.ACCOUNT),
+            CONVERT(VARCHAR, A3.END_DT, 101),
+            BUSINESS_UNIT,
+            A.FISCAL_YEAR,
+            A.ACCOUNTING_PERIOD
+    ) B
+WHERE
+    ABS(B.[Value]) &lt;&gt; 0
+GROUP BY
+    B.[Level Code],
+    B.[Sum_Code],
+    B.[Job_Code Code],
+    B.[Date],
+    B.FISCAL_YEAR,
+    B.ACCOUNTING_PERIOD
+ORDER BY
+    B.FISCAL_YEAR,
+    B.ACCOUNTING_PERIOD,
+    B.[Date],
+    B.[Level Code],
+    B.[Sum_Code],
+    B.[Job_Code Code]</property>
                     <property
                       dataType="System.String"
                       description="The variable that contains the SQL command to be executed."
@@ -6701,35 +6787,14 @@ from
               ReadOnlyVariables="$Package::SFTPPassword"
               ReadWriteVariables="User::SFTPp">
               <ProjectItem
-                Name="Properties\AssemblyInfo.cs"
-                Encoding="UTF8"><![CDATA[using System.Reflection;
-using System.Runtime.CompilerServices;
-
-//
-// General Information about an assembly is controlled through the following 
-// set of attributes. Change these attribute values to modify the information
-// associated with an assembly.
-//
-[assembly: AssemblyTitle("ST_fa5bf46cad71441a852d29f4bb525674")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("ST_fa5bf46cad71441a852d29f4bb525674")]
-[assembly: AssemblyCopyright("Copyright @  2023")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
-//
-// Version information for an assembly consists of the following four values:
-//
-//      Major Version
-//      Minor Version 
-//      Build Number
-//      Revision
-//
-// You can specify all the values or you can default the Revision and Build Numbers 
-// by using the '*' as shown below:
-
-[assembly: AssemblyVersion("1.0.*")]]]></ProjectItem>
+                Name="Properties\Settings.settings"
+                Encoding="UTF8"><![CDATA[<?xml version='1.0' encoding='iso-8859-1'?>
+<SettingsFile xmlns="uri:settings" CurrentProfile="(Default)">
+  <Profiles>
+    <Profile Name="(Default)" />
+  </Profiles>
+  <Settings />
+</SettingsFile>]]></ProjectItem>
               <ProjectItem
                 Name="Properties\Resources.resx"
                 Encoding="UTF8"><![CDATA[<?xml version="1.0" encoding="utf-8"?>
@@ -7125,14 +7190,35 @@ namespace ST_fa5bf46cad71441a852d29f4bb525674.Properties {
   </ProjectExtensions>
 </Project>]]></ProjectItem>
               <ProjectItem
-                Name="Properties\Settings.settings"
-                Encoding="UTF8"><![CDATA[<?xml version='1.0' encoding='iso-8859-1'?>
-<SettingsFile xmlns="uri:settings" CurrentProfile="(Default)">
-  <Profiles>
-    <Profile Name="(Default)" />
-  </Profiles>
-  <Settings />
-</SettingsFile>]]></ProjectItem>
+                Name="Properties\AssemblyInfo.cs"
+                Encoding="UTF8"><![CDATA[using System.Reflection;
+using System.Runtime.CompilerServices;
+
+//
+// General Information about an assembly is controlled through the following 
+// set of attributes. Change these attribute values to modify the information
+// associated with an assembly.
+//
+[assembly: AssemblyTitle("ST_fa5bf46cad71441a852d29f4bb525674")]
+[assembly: AssemblyDescription("")]
+[assembly: AssemblyConfiguration("")]
+[assembly: AssemblyCompany("")]
+[assembly: AssemblyProduct("ST_fa5bf46cad71441a852d29f4bb525674")]
+[assembly: AssemblyCopyright("Copyright @  2023")]
+[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCulture("")]
+//
+// Version information for an assembly consists of the following four values:
+//
+//      Major Version
+//      Minor Version 
+//      Build Number
+//      Revision
+//
+// You can specify all the values or you can default the Revision and Build Numbers 
+// by using the '*' as shown below:
+
+[assembly: AssemblyVersion("1.0.*")]]]></ProjectItem>
               <ProjectItem
                 Name="Properties\Resources.Designer.cs"
                 Encoding="UTF8"><![CDATA[//------------------------------------------------------------------------------
@@ -7609,7 +7695,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         <NodeLayout
           Size="150.666666666667,41.3333333333334"
           Id="Package\Failure notification"
-          TopLeft="678.822197585636,819.83704262445" />
+          TopLeft="717.822197585636,785.83704262445" />
         <NodeLayout
           Size="145.333333333334,41.3333333333334"
           Id="Package\file cleanup failed"
@@ -7726,11 +7812,11 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
           PanelSize="203.333333333334,322"
           Size="203.333333333334,364.666666666667"
           Id="Package\FSCM Capital"
-          TopLeft="1018.16662239366,221.800000475248" />
+          TopLeft="1021.16662239366,168.800000475248" />
         <NodeLayout
           Size="153.333333333334,41.3333333333334"
           Id="Package\FSCM capital failed"
-          TopLeft="912.000004172325,705.799999814034" />
+          TopLeft="897.000004172325,686.799999814034" />
         <NodeLayout
           Size="132.666666666667,41.3333333333334"
           Id="Package\jobcode failed"
@@ -7972,14 +8058,14 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         <ContainerLayout
           HeaderHeight="43"
           IsExpanded="True"
-          PanelSize="279.333333333334,616.666666666667"
+          PanelSize="279.333333333334,617.333333333334"
           Size="279.333333333334,660"
           Id="Package\other FSCM data"
           TopLeft="677.203676601988,15.5222224449229" />
         <NodeLayout
           Size="124,41.3333333333334"
           Id="Package\SFTP failed"
-          TopLeft="1150.61111154159,822.400001012484" />
+          TopLeft="1054.61111154159,791.400001012484" />
         <NodeLayout
           Size="185.333333333334,41.3333333333334"
           Id="Package\Upload to SFTP\process SFTP pwd variable"
@@ -8028,7 +8114,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
           PanelSize="252.666666666667,130"
           Size="252.666666666667,172.666666666667"
           Id="Package\Upload to SFTP"
-          TopLeft="1103.55555760861,609.288890314632" />
+          TopLeft="1035.55555760861,604.288890314632" />
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint]"
           TopLeft="289.729623981906,218.829630512014">
@@ -8133,90 +8219,78 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 11]"
-          TopLeft="262.4,570.822222222222">
+          TopLeft="262.333333333333,570.555555555555">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="477.062197585636,249.014820402228"
+              EndConnector="516.555530918969,215.281487068895"
               Start="0,0"
-              End="477.062197585636,241.514820402228">
+              End="516.555530918969,207.781487068895">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,133.524428278844" />
+                    End="0,114.899355028275" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,133.524428278844"
-                    Point2="0,137.524428278844"
-                    Point3="4,137.524428278844" />
+                    Point1="0,114.899355028275"
+                    Point2="0,118.899355028275"
+                    Point3="4,118.899355028275" />
                   <mssgle:LineSegment
-                    End="473.062197585636,137.524428278844" />
+                    End="512.555530918969,118.899355028275" />
                   <mssgle:CubicBezierSegment
-                    Point1="473.062197585636,137.524428278844"
-                    Point2="477.062197585636,137.524428278844"
-                    Point3="477.062197585636,141.524428278844" />
+                    Point1="512.555530918969,118.899355028275"
+                    Point2="516.555530918969,118.899355028275"
+                    Point3="516.555530918969,122.899355028275" />
                   <mssgle:LineSegment
-                    End="477.062197585636,241.514820402228" />
+                    End="516.555530918969,207.781487068895" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="213.226645667818,142.524428278844,50.60890625,11.609375"
+              BoundingBox="232.973312334485,123.899355028275,50.60890625,11.609375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 12]"
-          TopLeft="1150.61111154159,841.918521818467">
+          TopLeft="1054.61111154159,809.285188485134">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="-321.388913955951,0"
+              EndConnector="-186.122247289287,0"
               Start="0,0"
-              End="-313.888913955951,0">
+              End="-178.622247289287,0">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="-313.888913955951,0" />
+                    End="-178.622247289287,0" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="-182.248910102976,5,50.60890625,11.609375"
+              BoundingBox="-114.615576769644,5,50.60890625,11.609375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 13]"
-          TopLeft="1152.29995572699,586.600000475248">
+          TopLeft="1158.63886777891,533.466667141915">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="77.6556018816179,22.6888898393843"
+              EndConnector="0,70.8222231727173"
               Start="0,0"
-              End="77.6556018816179,15.1888898393843">
+              End="0,63.3222231727173">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,5.18191010687582" />
-                  <mssgle:CubicBezierSegment
-                    Point1="0,5.18191010687582"
-                    Point2="0,9.18191010687582"
-                    Point3="4,9.18191010687582" />
-                  <mssgle:LineSegment
-                    End="73.6556018816179,9.18191010687582" />
-                  <mssgle:CubicBezierSegment
-                    Point1="73.6556018816179,9.18191010687582"
-                    Point2="77.6556018816179,9.18191010687582"
-                    Point3="77.6556018816179,13.1819101068758" />
-                  <mssgle:LineSegment
-                    End="77.6556018816179,15.1888898393843" />
+                    End="0,63.3222231727173" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
@@ -8227,73 +8301,73 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 14]"
-          TopLeft="1087.23328906032,586.600000475248">
+          TopLeft="1090.27773350477,533.466667141915">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="-98.4332848879982,119.199999338786"
+              EndConnector="-116.611062665779,153.333332672119"
               Start="0,0"
-              End="-98.4332848879982,111.699999338786">
+              End="-116.611062665779,145.833332672119">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,44.2387497324151" />
+                    End="0,58.0516154340001" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,44.2387497324151"
-                    Point2="0,48.2387497324151"
-                    Point3="-4,48.2387497324151" />
+                    Point1="0,58.0516154340001"
+                    Point2="0,62.0516154340001"
+                    Point3="-4,62.0516154340001" />
                   <mssgle:LineSegment
-                    End="-94.4332848879982,48.2387497324151" />
+                    End="-112.611062665779,62.0516154340001" />
                   <mssgle:CubicBezierSegment
-                    Point1="-94.4332848879982,48.2387497324151"
-                    Point2="-98.4332848879982,48.2387497324151"
-                    Point3="-98.4332848879982,52.2387497324151" />
+                    Point1="-112.611062665779,62.0516154340001"
+                    Point2="-116.611062665779,62.0516154340001"
+                    Point3="-116.611062665779,66.0516154340001" />
                   <mssgle:LineSegment
-                    End="-98.4332848879982,111.699999338786" />
+                    End="-116.611062665779,145.833332672119" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="-64.4579901002491,53.2387497324151,30.4826953125,9.7490234375"
+              BoundingBox="-73.5468789891397,67.0516154340001,30.4826953125,9.7490234375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 15]"
-          TopLeft="988.800004172325,747.399999814034">
+          TopLeft="973.666670838992,728.133333147367">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="-192.057806586689,72.4370428104161"
+              EndConnector="-137.711139920022,57.7037094770825"
               Start="0,0"
-              End="-192.057806586689,64.9370428104161">
+              End="-137.711139920022,50.2037094770825">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,46.587533612029" />
+                    End="0,36.299871266442" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,46.587533612029"
-                    Point2="0,50.587533612029"
-                    Point3="-4,50.587533612029" />
+                    Point1="0,36.299871266442"
+                    Point2="0,40.299871266442"
+                    Point3="-4,40.299871266442" />
                   <mssgle:LineSegment
-                    End="-188.057806586689,50.587533612029" />
+                    End="-133.711139920022,40.299871266442" />
                   <mssgle:CubicBezierSegment
-                    Point1="-188.057806586689,50.587533612029"
-                    Point2="-192.057806586689,50.587533612029"
-                    Point3="-192.057806586689,54.587533612029" />
+                    Point1="-133.711139920022,40.299871266442"
+                    Point2="-137.711139920022,40.299871266442"
+                    Point3="-137.711139920022,44.299871266442" />
                   <mssgle:LineSegment
-                    End="-192.057806586689,64.9370428104161" />
+                    End="-137.711139920022,50.2037094770825" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="-121.333356418344,55.587533612029,50.60890625,11.609375"
+              BoundingBox="-94.1600230850112,45.299871266442,50.60890625,11.609375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
@@ -8371,30 +8445,18 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 4]"
-          TopLeft="956.537009935321,345.522222444923">
+          TopLeft="956.537009935321,348.327778126752">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="61.6296124583388,58.6111113636585"
+              EndConnector="64.6296124583388,0"
               Start="0,0"
-              End="54.1296124583388,58.6111113636585">
+              End="57.1296124583388,0">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="26.8148062291694,0" />
-                  <mssgle:CubicBezierSegment
-                    Point1="26.8148062291694,0"
-                    Point2="30.8148062291694,0"
-                    Point3="30.8148062291694,4" />
-                  <mssgle:LineSegment
-                    End="30.8148062291694,54.6111113636585" />
-                  <mssgle:CubicBezierSegment
-                    Point1="30.8148062291694,54.6111113636585"
-                    Point2="30.8148062291694,58.6111113636585"
-                    Point3="34.8148062291694,58.6111113636585" />
-                  <mssgle:LineSegment
-                    End="54.1296124583388,58.6111113636585" />
+                    End="57.1296124583388,0" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
@@ -8477,119 +8539,113 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 7]"
-          TopLeft="1229.95555760861,782.088890314632">
+          TopLeft="1161.88889094194,776.955556981299">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="-17.344446067021,40.3111106978524"
+              EndConnector="16.7222205996468,35.1111106978519"
               Start="0,0"
-              End="-17.344446067021,32.8111106978524">
+              End="9.22222059964679,35.1111106978519">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,16.1555553489262" />
+                    End="0,31.1111106978519" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,16.1555553489262"
-                    Point2="0,20.1555553489262"
-                    Point3="-4,20.1555553489262" />
+                    Point1="0,31.1111106978519"
+                    Point2="0,35.1111106978519"
+                    Point3="4,35.1111106978519" />
                   <mssgle:LineSegment
-                    End="-13.344446067021,20.1555553489262" />
-                  <mssgle:CubicBezierSegment
-                    Point1="-13.344446067021,20.1555553489262"
-                    Point2="-17.344446067021,20.1555553489262"
-                    Point3="-17.344446067021,24.1555553489262" />
-                  <mssgle:LineSegment
-                    End="-17.344446067021,32.8111106978524" />
+                    End="9.22222059964679,35.1111106978519" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="-23.9135706897605,25.1555553489262,30.4826953125,9.7490234375"
+              BoundingBox="-8.6302373564266,40.1111106978519,30.4826953125,9.7490234375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 8]"
-          TopLeft="142.533333333333,664.155555555556">
+          TopLeft="142,663.888888888889">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="568.608864252303,155.681487068894"
+              EndConnector="608.355530918969,121.94815373556"
               Start="0,0"
-              End="568.608864252303,148.181487068894">
+              End="608.355530918969,114.44815373556">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,104.709626892768" />
+                    End="0,81.1677464284199" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,104.709626892768"
-                    Point2="0,108.709626892768"
-                    Point3="4,108.709626892768" />
+                    Point1="0,81.1677464284199"
+                    Point2="0,85.1677464284199"
+                    Point3="4,85.1677464284199" />
                   <mssgle:LineSegment
-                    End="564.608864252303,108.709626892768" />
+                    End="604.355530918969,85.1677464284199" />
                   <mssgle:CubicBezierSegment
-                    Point1="564.608864252303,108.709626892768"
-                    Point2="568.608864252303,108.709626892768"
-                    Point3="568.608864252303,112.709626892768" />
+                    Point1="604.355530918969,85.1677464284199"
+                    Point2="608.355530918969,85.1677464284199"
+                    Point3="608.355530918969,89.1677464284199" />
                   <mssgle:LineSegment
-                    End="568.608864252303,148.181487068894" />
+                    End="608.355530918969,114.44815373556" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="258.999979001151,113.709626892768,50.60890625,11.609375"
+              BoundingBox="278.873312334485,90.1677464284199,50.60890625,11.609375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <EdgeLayout
           Id="Package.PrecedenceConstraints[Constraint 9]"
-          TopLeft="517.155555555556,665.711111111111">
+          TopLeft="517.222222222223,665.444444444444">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="250.62664203008,154.125931513339"
+              EndConnector="290.199975363413,120.392598180006"
               Start="0,0"
-              End="250.62664203008,146.625931513339">
+              End="290.199975363413,112.892598180006">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
                   <mssgle:LineSegment
-                    End="0,81.1197554429841" />
+                    End="0,62.4924906859268" />
                   <mssgle:CubicBezierSegment
-                    Point1="0,81.1197554429841"
-                    Point2="0,85.1197554429841"
-                    Point3="4,85.1197554429841" />
+                    Point1="0,62.4924906859268"
+                    Point2="0,66.4924906859268"
+                    Point3="4,66.4924906859268" />
                   <mssgle:LineSegment
-                    End="246.62664203008,85.1197554429841" />
+                    End="286.199975363413,66.4924906859268" />
                   <mssgle:CubicBezierSegment
-                    Point1="246.62664203008,85.1197554429841"
-                    Point2="250.62664203008,85.1197554429841"
-                    Point3="250.62664203008,89.1197554429841" />
+                    Point1="286.199975363413,66.4924906859268"
+                    Point2="290.199975363413,66.4924906859268"
+                    Point3="290.199975363413,70.4924906859268" />
                   <mssgle:LineSegment
-                    End="250.62664203008,146.625931513339" />
+                    End="290.199975363413,112.892598180006" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
             <mssgm:EdgeLabel
-              BoundingBox="100.00886789004,90.1197554429841,50.60890625,11.609375"
+              BoundingBox="119.795534556707,71.4924906859268,50.60890625,11.609375"
               RelativePosition="Any" />
           </EdgeLayout.Labels>
         </EdgeLayout>
         <AnnotationLayout
-          Text="Change Log:&#xA;2023/08/31 Copy of VCHAdaptive2 with changes for release3&#xA;                   PSOFT-4404&#xA;2023/05/03 Bug fixes, dated May 2, PSOFT-4145&#xA;2023/04/27 operational bug fix and Capital change PSOFT-4145&#xA;2023/04/26 updated file 20 with Apr 21 update PSOFT-4145&#xA;2023/04/19 delay validation tur for all db connections and dtflows&#xA;2023/04/13 PSOFT-4145 adding Capital, add dynamic file connections&#xA;2023/04/11 PSOFT-4039 04/Apr/23 3:30 PM"
+          Text="Change Log:&#xA;2024/10-25 PSOFT-5114 and PSOFT 4939&#xD;&#xA;2023/08/31 Copy of VCHAdaptive2 with changes for release3&#xA;                   PSOFT-4404&#xA;2023/05/03 Bug fixes, dated May 2, PSOFT-4145&#xA;2023/04/27 operational bug fix and Capital change PSOFT-4145&#xA;2023/04/26 updated file 20 with Apr 21 update PSOFT-4145&#xA;2023/04/19 delay validation tur for all db connections and dtflows&#xA;2023/04/13 PSOFT-4145 adding Capital, add dynamic file connections&#xA;2023/04/11 PSOFT-4039 04/Apr/23 3:30 PM"
           ParentId="Package"
           FontInfo="{assembly:Null}"
-          Size="398.666666666667,167.333333333334"
+          Size="398.666666666667,183.333333333334"
           Id="58426a55-f672-4313-a858-ede66b2cba3d"
-          TopLeft="1014.49995956818,45.600000330607" />
+          TopLeft="1249.49995956818,42.600000330607" />
       </GraphLayout>
     </LayoutInfo>
   </Package>
@@ -9113,13 +9169,13 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
     design-time-name="Package\other FSCM data\27_non_WF_HOURS">
     <LayoutInfo>
       <GraphLayout
-        Capacity="4" xmlns="clr-namespace:Microsoft.SqlServer.IntegrationServices.Designer.Model.Serialization;assembly=Microsoft.SqlServer.IntegrationServices.Graph" xmlns:mssgle="clr-namespace:Microsoft.SqlServer.Graph.LayoutEngine;assembly=Microsoft.SqlServer.Graph" xmlns:assembly="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:mssgm="clr-namespace:Microsoft.SqlServer.Graph.Model;assembly=Microsoft.SqlServer.Graph">
+        Capacity="4" xmlns="clr-namespace:Microsoft.SqlServer.IntegrationServices.Designer.Model.Serialization;assembly=Microsoft.SqlServer.IntegrationServices.Graph" xmlns:mssgle="clr-namespace:Microsoft.SqlServer.Graph.LayoutEngine;assembly=Microsoft.SqlServer.Graph" xmlns:assembly="http://schemas.microsoft.com/winfx/2006/xaml">
         <NodeLayout
-          Size="132,42.4"
+          Size="132,42.6666666666667"
           Id="Package\other FSCM data\27_non_WF_HOURS\OLE DB Source"
           TopLeft="205,69" />
         <NodeLayout
-          Size="144,42.4"
+          Size="144,42.6666666666667"
           Id="Package\other FSCM data\27_non_WF_HOURS\Flat File Destination"
           TopLeft="206,168" />
         <EdgeLayout
@@ -9141,9 +9197,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
             </mssgle:Curve>
           </EdgeLayout.Curve>
           <EdgeLayout.Labels>
-            <mssgm:EdgeLabel
-              BoundingBox="0,0,0,0"
-              RelativePosition="Any" />
+            <EdgeLabelCollection />
           </EdgeLayout.Labels>
         </EdgeLayout>
       </GraphLayout>
@@ -9213,20 +9267,20 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
         <NodeLayout
           Size="140.666666666667,41.3333333333334"
           Id="Package\other FSCM data\7_LDR_ACTUALS\OLE DB Source"
-          TopLeft="163.16666014327,84.2000006612142" />
+          TopLeft="164.16666014327,84.2000006612142" />
         <NodeLayout
           Size="156,41.3333333333334"
           Id="Package\other FSCM data\7_LDR_ACTUALS\Flat File Destination"
           TopLeft="171.666659845247,170.7333346902" />
         <EdgeLayout
           Id="Package\other FSCM data\7_LDR_ACTUALS.Paths[OLE DB Source Output]"
-          TopLeft="233.499993476603,125.533333994548">
+          TopLeft="234.499993476603,125.533333994548">
           <EdgeLayout.Curve>
             <mssgle:Curve
               StartConnector="{assembly:Null}"
-              EndConnector="16.1666663686436,45.2000006956524"
+              EndConnector="15.1666663686437,45.2000006956524"
               Start="0,0"
-              End="16.1666663686436,37.7000006956524">
+              End="15.1666663686437,37.7000006956524">
               <mssgle:Curve.Segments>
                 <mssgle:SegmentCollection
                   Capacity="5">
@@ -9237,13 +9291,13 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
                     Point2="0,22.6000003478262"
                     Point3="4,22.6000003478262" />
                   <mssgle:LineSegment
-                    End="12.1666663686436,22.6000003478262" />
+                    End="11.1666663686437,22.6000003478262" />
                   <mssgle:CubicBezierSegment
-                    Point1="12.1666663686436,22.6000003478262"
-                    Point2="16.1666663686436,22.6000003478262"
-                    Point3="16.1666663686436,26.6000003478262" />
+                    Point1="11.1666663686437,22.6000003478262"
+                    Point2="15.1666663686437,22.6000003478262"
+                    Point3="15.1666663686437,26.6000003478262" />
                   <mssgle:LineSegment
-                    End="16.1666663686436,37.7000006956524" />
+                    End="15.1666663686437,37.7000006956524" />
                 </mssgle:SegmentCollection>
               </mssgle:Curve.Segments>
             </mssgle:Curve>
